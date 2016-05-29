@@ -1,3 +1,14 @@
 <resources>
-    <string name="app_name">MyBlockGameApp</string>
+    <string name="app_name">∞ Block Break Game</string>
+    <string name="clear">Clear!!</string>
+    <string name="GameOver">Game Over</string>
+    <string name="blockCount">Block :%s</string>
+    <string name="time">Time:%1$d.%2$d</string>
+    <string name="score">Score:%d</string>
+    <string name="high_score">High Score:%d</string>
+    <string name="title_activity_setting">Setting</string>
+    <string name="pref_header_general">Game Setting</string>
+    <string name="pref_sound">Sound</string>
+    <string name="pref_vibrate">Vibrate</string>
+    <string name="title_activity_settings">settings</string>
 </resources>

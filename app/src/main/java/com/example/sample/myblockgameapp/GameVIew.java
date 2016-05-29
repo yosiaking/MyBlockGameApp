@@ -6,9 +6,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.SurfaceTexture;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.Vibrator;
 import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.View;
@@ -51,7 +54,7 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
 
 
     //ブロックの個数
-    private final int BLOCK_COUNT = 100;
+    public final static int BLOCK_COUNT = 100;
 
     //ライフ
     private int mLife;
@@ -63,15 +66,24 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
     //Handlerで行いたい処理を別スレッドに渡すことで、渡されたスレッドは渡されたHandlerを順番に処理していく
     private Handler mHandler;
 
+    //ゲーム全体で保存するべき値(ゲーム開始時間、ブロックとパッドの状態)
+    private static final String KEY_LIFE = "life";
+    private static final String KEY_GAME_START_TIME = "game_start_time";
+    private static final String KEY_BALL = "ball";
+    private static final String KEY_BLOCK = "block";
+
+    //ゲーム全体の値を格納するメンバ変数
+    private final Bundle mSaveInstaceState;
 
 
-    public GameVIew(final Context context) {
+    public GameVIew(final Context context, Bundle savedInstaceState) {
         //StartActivityはContextクラスから受け取っている
         //そのため、GameViewクラスでは使えないが、Contextクラスを継承したコンストラクタなら可能
         super(context);
         //図形を描写する処理
         setSurfaceTextureListener(this);
         setOnTouchListener(this);
+        mSaveInstaceState = savedInstaceState;
 
         mHandler = new Handler(){
             public void handleMessage(Message message){
@@ -93,8 +105,20 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
             @Override
             public void run() {
                 Paint paint = new Paint();
+
+                //音声を再生するライブラリ ToneGenerator
+                //1ストリームの種類 2音量
+                ToneGenerator toneGenerator = new ToneGenerator(AudioManager.STREAM_MUSIC, ToneGenerator.MAX_VOLUME);
+
+                //バイブレーション機能の追加 Vibratorクラスをインスタンス化
+                Vibrator vibrator = (Vibrator)getContext().getSystemService(Context.VIBRATOR_SERVICE);
+
                 paint.setColor(Color.parseColor("#ff3333"));
                 paint.setStyle(Paint.Style.FILL);
+
+                //Blockにぶつかった時の音
+                int collisionTime = 0;
+                int soundIndex = 0;
 
                 //trueの限り、中の処理を行い続ける
                 //※だから、タッチする度に位置が変わったりする
@@ -132,20 +156,30 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
                         //ボールの左側が0(左の壁にぶつかる)&speedXが0以下(左に向かって移動している)
                         //もしくは、ボールの右側がgetWidth幅(右の壁にぶつかる)&speedXが0以上(右に向かって移動している)
                         if(ballLeft < 0 && mBall.getSpeedX() < 0 || ballRight >= getWidth() && mBall.getSpeedX() > 0){
+                            //壁にぶつかった音
+                            toneGenerator.startTone(ToneGenerator.TONE_DTMF_0, 10);
                             //横の壁にぶつかったので速度を反転
                             mBall.setSpeedX(-mBall.getSpeedX()); //
                         }
 
                         if(ballTop < 0){
+                            //壁にぶつかった音
+                            toneGenerator.startTone(ToneGenerator.TONE_DTMF_0, 10);
                             //横の壁にぶつかったので速度を反転
                             mBall.setSpeedY(-mBall.getSpeedY()); //
                         }
 
                         if(ballTop > getHeight()){
-                            if(mLife>0){
+                            if(mLife > 0){
+                                toneGenerator.startTone(ToneGenerator.TONE_CDMA_ABBR_ALERT);
+                                //vibratorインスタンスのメソッドで音を鳴らす
+                                //引数は1000分の1秒
+                                vibrator.vibrate(50);
                                 mLife--;
                                 mBall.reset();
                             }else{
+                                toneGenerator.startTone(ToneGenerator.TONE_CDMA_ALERT_NETWORK_LITE);
+                                vibrator.vibrate(50);
                                 unlockCanvasAndPost(canvas);
                                 Message message = Message.obtain();
                                 Bundle bundle = new Bundle();
@@ -193,14 +227,37 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
                             isCollision = true;
                         }
 
+                        //音の変化
+                        //ブロックとボールがぶつかった場合
+                        if(isCollision){
+                            //一定期間内(ループが15回行われるまでにあたったら音を変える)
+                            if(collisionTime > 0){
+                                if(soundIndex < 15){
+                                    soundIndex ++;
+                                }
+                            }else{
+                                //音を戻す
+                                soundIndex = 1;
+                            }
+                            collisionTime = 10;
+                            toneGenerator.startTone(soundIndex, 10);
+                        }else if(collisionTime > 0){
+                            //ブロックにぶつかっていない場合、音が変わる残り時間を減らす
+                            collisionTime--;
+                        }
 
-                        //パッドとボールの衝突判定処理
+
+                        //パッドとボールの衝突判定処理のために使う値
                         float padTop = mPad.getTop();
                         float ballSpeedY = mBall.getSpeedY();
-
                         //バットとボールが衝突したかを判定するif文の条件
                         if(ballBottom > padTop && ballBottom - ballSpeedY < padTop && padLeft < ballRight && padRight > ballLeft)
                         {
+
+                            //ボールがパッドにあたった時の処理
+                            //予め用意された音が鳴る
+                            toneGenerator.startTone(ToneGenerator.TONE_DTMF_0, 10);
+
                             if(ballSpeedY < mBlockHeight / 3){
                                 ballSpeedY *= -1.05;
                             }else{
@@ -228,6 +285,7 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
                         //キャンバスがロックされたままにならないように、ロックが解除されたあとで処理を実行
                         //ブロックが壊れた&ブロックのカウントがゼロになった場合
                         if(isCollision && getBlockCount() == 0){
+                            toneGenerator.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD);
                             Message message = Message.obtain();
                             Bundle bundle = new Bundle();
                             bundle.putBoolean(ClearActivity.EXTRA_IS_CLEAR, true);
@@ -249,7 +307,12 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
                         }
 
                     }
+
+
                 }
+                //whileが終了するタイミングでToneGeneratorを解放
+                //終了時に破棄を行う必要がある
+                toneGenerator.release();
             }
         });
         mIsRunnable = true;
@@ -327,8 +390,19 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
         mLife = 5;
 
         //開始時間
+        //System.currentTimeMillis()を呼び出すと、1970年1月1日からのミリ秒を取得できます。
         mGameStartTime = System.currentTimeMillis();
 
+
+        //復元処理を行う
+        if(mSaveInstaceState != null){
+            mLife = mSaveInstaceState.getInt(KEY_LIFE);
+            mGameStartTime = mSaveInstaceState.getLong(KEY_GAME_START_TIME);
+            mBall.restore(mSaveInstaceState.getBundle(KEY_BALL), width, height);
+            for(int i=0; i<BLOCK_COUNT; i++){
+                mBlockList.get(i).restore(mSaveInstaceState.getBundle(KEY_BLOCK + String.valueOf(i)));
+            }
+        }
 
     }
 
@@ -352,6 +426,16 @@ public class GameVIew extends TextureView implements TextureView.SurfaceTextureL
             }
         }
         return null;
+    }
+
+    //値を保持するためのメソッド
+    public void onSaveInstanceState(Bundle outState) {
+        outState.putInt(KEY_LIFE, mLife);
+        outState.putLong(KEY_GAME_START_TIME, mGameStartTime);
+        outState.putBundle(KEY_BALL, mBall.save(getWidth(), getHeight()));
+        for (int i=0; i<BLOCK_COUNT; i++){
+            outState.putBundle(KEY_BLOCK + String.valueOf(i), mBlockList.get(i).save());
+        }
     }
 
 

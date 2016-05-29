@@ -23,6 +23,11 @@ public class Pad implements DrawableItem {
         mRight = right;
     }
 
+    //パッドの上部を取得するゲッター
+    public float getTop(){
+        return mTop;
+    }
+
     public void draw(Canvas canvas, Paint paint){
         paint.setColor(Color.parseColor("#bbbbbb"));
         paint.setStyle(Paint.Style.FILL);
